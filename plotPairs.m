@@ -6,6 +6,10 @@ function plotPairs(results, n)
         cointRel = results.cointRel;
         positions = results.positions;
         pl = results.pl;
+        cb = results.cbA;
+        ub = results.ubA;
+        lb = results.lbA;
+        
     catch 
         error('Are you kidding me?');
     end;
@@ -16,10 +20,8 @@ function plotPairs(results, n)
         plot(1:nDays, prices(:,cointRel(n,1)), 1:nDays, prices(:,cointRel(n,2))); axis tight; grid on;
     h2 = subplot(2,2,2);
         plot(1:nDays, spreads(:,n)); axis tight; grid on; hold on;
-        m = mean(spreads(:,n));
-        sd = std(spreads(:,n));
-        plot(1:nDays, m + 2*sd*ones(nDays,1), 'r', 1:nDays, m - 2*sd*ones(nDays,1), 'r');
-        plot(1:nDays, m*ones(nDays,1), 'g'); hold off;
+        plot(1:nDays, ub(:,n), 'r', 1:nDays, lb(:,n), 'r');
+        plot(1:nDays, cb(:,n), 'g'); hold off;
     h3 = subplot(2,2,3);
         plot(1:nDays, pl(:,n)); axis tight; grid on;
     h4 = subplot(2,2,4);

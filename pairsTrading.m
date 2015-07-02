@@ -28,11 +28,7 @@ function results = pairsTrading(prices, varargin)
     numAssets = size(prices,2);                 % number of assets
     n = (numAssets*numAssets-numAssets)/2;      % max number of cointegration's relations
     totDays = size(prices,1);                   % number of days
-    nDays = totDays - w;                        % number of days out of sample
-    
-    spreads = zeros(nDays, n);                  % array for spreads
-    cointRel = zeros(n,4);                      % table for cointegration
-    
+
     warning('off');                             % STFU!
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -48,17 +44,79 @@ function results = pairsTrading(prices, varargin)
         end;
     end;
     
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % Start pair trading on every couple. TODO: PARALLEL %
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % Start pair trading on every couple. TODO: manage different MATLAB versions %
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
     %matlabpool open;
     POOL = parpool('local',8);
+
+    switch p.Results.method
+        case 'standard'
+            [spreads, cointRel, cbA, ubA, lbA] = standardSpread(prices, couples, n, w, totDays, confLevel);
+        case 'log'
+            lPrices = log(prices);
+            [spreads, cointRel, cbA, ubA, lbA] = standardSpread(lPrices, couples, n, w, totDays, confLevel);
+        otherwise
+            [spreads, cointRel, cbA, ubA, lbA] = standardSpread(prices, couples, n, w, totDays, confLevel);
+    end;
+   
+    %matlabpool close;
+    delete(POOL);
+    
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % Now clean cointRel, spreads and prices %
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+    t = cointRel(:,1) ~= 0;
+    cointRel = cointRel(t,:);
+    spreads = spreads(w+1:end,t);
+    cbA = cbA(w+1:end,t);
+    ubA = ubA(w+1:end,t);
+    lbA = lbA(w+1:end,t);
+    prices = prices(w+1:end,:);
+    
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % Then obtain positions and p&l %
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+    positions = positionPair(spreads, cbA, ubA, lbA);
+    pl = profitAndLosses(positions, prices, cointRel);
+    
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % Return results in struct %
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+    results.pl = pl;
+    results.prices = prices;
+    results.cointRel = cointRel;
+    results.spreads = spreads;
+    results.cbA = cbA;
+    results.ubA = ubA;
+    results.lbA = lbA;
+    results.positions = positions;
+    
+    results.cumulativeRets = cumprod(sum(pl,2) + 1);
+    results.sumRets = cumsum(sum(pl,2));
+    results.totPL = sum(pl,2);
+    
+    warning('on');
+    
+end
+
+function [spreads, cointRel, cbA, ubA, lbA] = standardSpread(prices, couples, n, w, totDays, confLevel)
+
+    nDays = totDays - w;                        % number of days out of sample
+    spreads = zeros(nDays,n);                   % array for spreads
+    cbA = spreads;
+    ubA = spreads;
+    lbA = spreads;
+    cointRel = zeros(n,4);                      % table for cointegration
     
     parfor_progress(n);
-    
+
     for i=1:n         
-     
+    
         for d=w+1:totDays
             
             tmpPrices = [prices(d-w:d, couples(i,1)) prices(d-w:d, couples(i,2))];
@@ -71,8 +129,16 @@ function results = pairsTrading(prices, varargin)
                 c0 = c(3);
                 beta = [1; -c(4)];
                 s = zscore(tmpPrices*beta - c0);
+                
                 spreads(d,i) = s(end);
-
+                cbA(d,i) = mean(s);
+                ubA(d,i) = mean(s) + 2*std(s);
+                lbA(d,i) = mean(s) - 2*std(s);
+            
+            else
+                cbA(d,i) = 0;
+                ubA(d,i) = 2;
+                lbA(d,i) = -2;
             end;
             
         end;
@@ -82,47 +148,6 @@ function results = pairsTrading(prices, varargin)
     end;
     
     parfor_progress(0);
-    
-    %matlabpool close;
-    delete(POOL);
-    
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % Now clean cointRel, spreads and prices %
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-    t = cointRel(:,1) ~= 0;
-    cointRel = cointRel(t,:);
-    spreads = spreads(w+1:end, t);
-    prices = prices(w+1:end,:);
-    
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % Then obtain positions and p&l %
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
-    positions = positionPair(spreads);
-    pl = profitAndLosses(positions, prices, cointRel);
-    
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % Return results in struct %
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
-    results.pl = pl;
-    results.prices = prices;
-    results.cointRel = cointRel;
-    results.spreads = spreads;
-    results.positions = positions;
-    
-    results.cumulativeRets = cumprod(sum(pl,2) + 1);
-    results.sumRets = sum(sum(pl,2));
-    results.totPL = sum(pl,1);
-    
-    warning('on');
-    
-end
-
-function w = optimalWindowWidth(t)
-
-    %  Really needed ? 
 
 end
 
@@ -138,7 +163,7 @@ function c = cointParam(p, couple, level)
     
 end
 
-function p = positionPair(spreads)
+function p = positionPair(spreads, cbA, ubA, lbA)
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % TODO: ROLLING POSITIONS! %
@@ -149,29 +174,26 @@ function p = positionPair(spreads)
     
     p = zeros(nDays, ncol);
     
-
     for i=1:ncol
         
-        %y = spreads(1:end-1,i);
-        t = spreads(1:end,i);
-        
-        cb = mean(spreads(:,i));
-        ub = cb + 2 * std(spreads(:,i));
-        lb = cb - 2 * std(spreads(:,i));
-        
+        t = spreads(:,i);
+        cb = cbA(:,i);
+        ub = ubA(:,i);
+        lb = lbA(:,i);
+
         for j=3:nDays
             
             if (p(j-1,i) == 0) % No position
                 
-                if (t(j-2) > ub && t(j-1) < ub)
+                if (t(j-2) > ub(j-2) && t(j-1) < ub(j-1))
                     p(j,i) = -1;
-                elseif (t(j-2) < lb && t(j-1) > lb)
+                elseif (t(j-2) < lb(j-2) && t(j-1) > lb(j-2))
                     p(j,i) = 1;
                 end;
                 
             elseif (p(j-1,i) == 1) % Buy greater sell the lower
                 
-                if (t(j-2) < cb && t(j-1) > cb)
+                if (t(j-2) < cb(j-2) && t(j-1) >= cb(j-1))
                     p(j,i) = 0;
                 else
                     p(j,i) = 1;
@@ -179,7 +201,7 @@ function p = positionPair(spreads)
             
             else % p(j-1) == -1 Buy the lower sell the greater
             
-                if (t(j-2) > cb && t(j-1) < cb)
+                if (t(j-2) > cb(j-2) && t(j-1) <= cb(j-1))
                     p(j,i) = 0;
                 else
                     p(j,i) = -1;
@@ -195,6 +217,10 @@ end
 
 function pl = profitAndLosses(positions, prices, coint)
 
+    %%%%%%%%%%%%%%%%%%%%%%%%%
+    % TODO: Add commissions %
+    %%%%%%%%%%%%%%%%%%%%%%%%%
+    
     k = size(coint,1);
     n = size(prices,1);
     pl = zeros(n,k);
