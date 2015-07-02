@@ -25,12 +25,13 @@ function results = pairsTrading(prices, varargin)
     end;
     
     w = p.Results.window;                       % window length
-    numAssets = size(prices,2);
-    n = (numAssets*numAssets-numAssets)/2;
-    totDays = size(prices,1);
+    numAssets = size(prices,2);                 % number of assets
+    n = (numAssets*numAssets-numAssets)/2;      % max number of cointegration's relations
+    totDays = size(prices,1);                   % number of days
     nDays = totDays - w;                        % number of days out of sample
-    spreads = zeros(nDays, n);
-    cointRel = zeros(n,4);
+    
+    spreads = zeros(nDays, n);                  % array for spreads
+    cointRel = zeros(n,4);                      % table for cointegration
     
     warning('off');                             % STFU!
     
@@ -66,30 +67,11 @@ function results = pairsTrading(prices, varargin)
             
             if ~isempty(c)
                 
-                % disp(['Cointegration found in the couple (' num2str(couples(i,1)) ', ' num2str(couples(i,2)) ')']);
-                % do rolling pairs trading
-                
                 cointRel(i,:) = c;
                 c0 = c(3);
                 beta = [1; -c(4)];
                 s = zscore(tmpPrices*beta - c0);
                 spreads(d,i) = s(end);
-                
-%                nr = find((cointRel(:,1) == couples(i,1)) & (cointRel(:,2) == couples(i,2)));               
-%                 if isempty(nr)
-%                     k = k + 1;
-%                     cointRel(k,:) = c;
-%                     c0 = cointRel(k,3);
-%                     beta = [1; -cointRel(k,4)];
-%                     s = zscore(tmpPrices*beta - c0);
-%                     spreads(d,k) = s(end);
-%                 else
-%                     cointRel(nr,:) = c;
-%                     c0 = cointRel(nr,3);
-%                     beta = [1; -cointRel(nr,4)];
-%                     s = zscore(tmpPrices*beta - c0);
-%                     spreads(d,nr) = s(end);
-%                 end;
 
             end;
             
@@ -130,6 +112,10 @@ function results = pairsTrading(prices, varargin)
     results.spreads = spreads;
     results.positions = positions;
     
+    results.cumulativeRets = cumprod(sum(pl,2) + 1);
+    results.sumRets = sum(sum(pl,2));
+    results.totPL = sum(pl,1);
+    
     warning('on');
     
 end
@@ -166,26 +152,26 @@ function p = positionPair(spreads)
 
     for i=1:ncol
         
-        y = spreads(1:end-1,i);
-        t = spreads(2:end,i);
+        %y = spreads(1:end-1,i);
+        t = spreads(1:end,i);
         
         cb = mean(spreads(:,i));
         ub = cb + 2 * std(spreads(:,i));
         lb = cb - 2 * std(spreads(:,i));
         
-        for j=2:nDays
+        for j=3:nDays
             
             if (p(j-1,i) == 0) % No position
                 
-                if (y(j-1) > ub && t(j-1) < ub)
+                if (t(j-2) > ub && t(j-1) < ub)
                     p(j,i) = -1;
-                elseif (y(j-1) < lb && t(j-1) > lb)
+                elseif (t(j-2) < lb && t(j-1) > lb)
                     p(j,i) = 1;
                 end;
                 
             elseif (p(j-1,i) == 1) % Buy greater sell the lower
                 
-                if (y(j-1) < cb && t(j-1) > cb)
+                if (t(j-2) < cb && t(j-1) > cb)
                     p(j,i) = 0;
                 else
                     p(j,i) = 1;
@@ -193,7 +179,7 @@ function p = positionPair(spreads)
             
             else % p(j-1) == -1 Buy the lower sell the greater
             
-                if (y(j-1) > cb && t(j-1) < cb)
+                if (t(j-2) > cb && t(j-1) < cb)
                     p(j,i) = 0;
                 else
                     p(j,i) = -1;
