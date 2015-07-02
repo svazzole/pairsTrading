@@ -1,4 +1,4 @@
-function [pl, positions, spreads, cointRel] = pairsTrading(prices, varargin)
+function results = pairsTrading(prices, varargin)
 
     p = inputParser;
     
@@ -32,6 +32,8 @@ function [pl, positions, spreads, cointRel] = pairsTrading(prices, varargin)
     spreads = zeros(nDays, n);
     cointRel = zeros(n,4);
     
+    warning('off');                             % STFU!
+    
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % Generate all the couples. TODO: Is there a better way? %
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -48,16 +50,14 @@ function [pl, positions, spreads, cointRel] = pairsTrading(prices, varargin)
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % Start pair trading on every couple. TODO: PARALLEL %
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
-    % k = 0;
-    
+
     %matlabpool open;
+    POOL = parpool('local',8);
     
-    %parfor_progress(n);
+    parfor_progress(n);
     
     for i=1:n         
-        disp(i);
-        
+     
         for d=w+1:totDays
             
             tmpPrices = [prices(d-w:d, couples(i,1)) prices(d-w:d, couples(i,2))];
@@ -94,22 +94,43 @@ function [pl, positions, spreads, cointRel] = pairsTrading(prices, varargin)
             end;
             
         end;
+        
+        parfor_progress;
+    
     end;
     
-    %parfor_progress(0);
+    parfor_progress(0);
     
     %matlabpool close;
+    delete(POOL);
     
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % Now clean spreads and cointRel %
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % Now clean cointRel, spreads and prices %
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+    t = cointRel(:,1) ~= 0;
+    cointRel = cointRel(t,:);
+    spreads = spreads(w+1:end, t);
+    prices = prices(w+1:end,:);
+    
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % Then obtain positions and p&l %
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
     positions = positionPair(spreads);
     pl = profitAndLosses(positions, prices, cointRel);
+    
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % Return results in struct %
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+    results.pl = pl;
+    results.prices = prices;
+    results.cointRel = cointRel;
+    results.spreads = spreads;
+    results.positions = positions;
+    
+    warning('on');
     
 end
 
@@ -133,6 +154,10 @@ end
 
 function p = positionPair(spreads)
 
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % TODO: ROLLING POSITIONS! %
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
     ncol = size(spreads,2);
     nDays = size(spreads,1);
     
