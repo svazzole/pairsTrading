@@ -1,2 +1,3 @@
 *.mat
 *~
+parfor_progress.txt
