@@ -49,7 +49,7 @@ function results = pairsTrading(prices, varargin)
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
     %matlabpool open;
-    POOL = parpool('local',8);
+    POOL = parpool('local');
 
     switch p.Results.method
         case 'standard'
@@ -58,15 +58,15 @@ function results = pairsTrading(prices, varargin)
             lPrices = log(prices);
             [spreads, cointRel, cbA, ubA, lbA] = standardSpread(lPrices, couples, n, w, totDays, confLevel);
         otherwise
-            [spreads, cointRel, cbA, ubA, lbA] = standardSpread(prices, couples, n, w, totDays, confLevel);
+            [spreads, cointRel, cbA, ubA, lbA] = quotientSpread(prices, couples, n, w, totDays, confLevel);
     end;
    
     %matlabpool close;
     delete(POOL);
     
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % Now clean cointRel, spreads and prices %
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % Now clean cointRel, spreads, prices and bands %
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
     t = cointRel(:,1) ~= 0;
     cointRel = cointRel(t,:);
@@ -129,6 +129,51 @@ function [spreads, cointRel, cbA, ubA, lbA] = standardSpread(prices, couples, n,
                 c0 = c(3);
                 beta = [1; -c(4)];
                 s = zscore(tmpPrices*beta - c0);
+                
+                spreads(d,i) = s(end);
+                cbA(d,i) = mean(s);
+                ubA(d,i) = mean(s) + 2*std(s);
+                lbA(d,i) = mean(s) - 2*std(s);
+            
+            else
+                cbA(d,i) = 0;
+                ubA(d,i) = 2;
+                lbA(d,i) = -2;
+            end;
+            
+        end;
+        
+        parfor_progress;
+    
+    end;
+    
+    parfor_progress(0);
+
+end
+
+function [spreads, cointRel, cbA, ubA, lbA] = quotientSpread(prices, couples, n, w, totDays, confLevel)
+
+    nDays = totDays - w;                        % number of days out of sample
+    spreads = zeros(nDays,n);                   % array for spreads
+    cbA = spreads;
+    ubA = spreads;
+    lbA = spreads;
+    cointRel = zeros(n,4);                      % table for cointegration
+    
+    parfor_progress(n);
+
+    for i=1:n         
+    
+        for d=w+1:totDays
+            
+            tmpPrices = [prices(d-w:d, couples(i,1)) prices(d-w:d, couples(i,2))];
+            
+            c = cointParam([tmpPrices(:,1) tmpPrices(:,2)], couples(i,:), confLevel);
+            
+            if ~isempty(c)
+                
+                cointRel(i,:) = c;
+                s = tmpPrices(:,1)./tmpPrices(:,2);
                 
                 spreads(d,i) = s(end);
                 cbA(d,i) = mean(s);
