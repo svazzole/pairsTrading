@@ -227,10 +227,6 @@ function c = cointParam(p, couple, level)
 end
 
 function p = positionPair(spreads, cbA, ubA, lbA)
-
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % TODO: ROLLING POSITIONS! %
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
     ncol = size(spreads,2);
     nDays = size(spreads,1);
@@ -279,10 +275,6 @@ function p = positionPair(spreads, cbA, ubA, lbA)
 end
 
 function pl = profitAndLosses(positions, prices, coint, bps)
-
-    %%%%%%%%%%%%%%%%%%%%%%%%%
-    % TODO: Add commissions %
-    %%%%%%%%%%%%%%%%%%%%%%%%%
     
     k = size(coint,1);
     n = size(prices,1);
@@ -314,6 +306,9 @@ end
 
 function b = commissions(pos)
 
+    % N.B.: the trading costs must change sign 
+    % depending on the position (-1 or 1)!
+    
     d = size(pos,1);
     b = zeros(d,1);
     
