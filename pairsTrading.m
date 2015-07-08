@@ -55,9 +55,9 @@ function results = pairsTrading(prices, varargin)
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % Start pair trading on every couple. TODO: manage different MATLAB versions %
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-    nDays = totDays - w;                        % number of days out of sample
-    spreads = zeros(nDays,n);                   % array for spreads
+    
+    m = p.Results.method;
+    spreads = zeros(totDays,n);                 % array for spreads
     cbA = spreads;
     ubA = spreads;
     lbA = spreads;
@@ -68,33 +68,18 @@ function results = pairsTrading(prices, varargin)
     parfor_progress(n);
 
     parfor i=1:n         
-                
-        for d=w+1:totDays
-            
-            tmpPrices = [prices(d-w:d, couples(i,1)) prices(d-w:d, couples(i,2))];
-            
-            c = cointParam([tmpPrices(:,1) tmpPrices(:,2)], couples(i,:), confLevel);
-            
-            if ~isempty(c)
-                
-                cointRel(i,:) = c;
-                c0 = c(3);
-                beta = [1; -c(4)];
-                s = zscore(tmpPrices*beta - c0);
-                
-                spreads(d,i) = s(end);
-                cbA(d,i) = mean(s);
-                ubA(d,i) = mean(s) + 2*std(s);
-                lbA(d,i) = mean(s) - 2*std(s);
-            
-            else
-                cbA(d,i) = 0;
-                ubA(d,i) = 2;
-                lbA(d,i) = -2;
-            end;
-            
-        end;
         
+        c = couples(i,:);
+        tmpPrices = [prices(:,c(1)) prices(:,c(2))];
+        switch m
+            case 'standard'
+                [spreads(:,i), cointRel(i,:), cbA(:,i), ubA(:,i), lbA(:,i)] = standardSpread(tmpPrices, c, w, totDays, confLevel);
+            case 'log'
+                tmpPrices = log(tmpPrices);
+                [spreads(:,i), cointRel(i,:), cbA(:,i), ubA(:,i), lbA(:,i)] = standardSpread(tmpPrices, c, w, totDays, confLevel);
+            otherwise
+                [spreads(:,i), cointRel(i,:), cbA(:,i), ubA(:,i), lbA(:,i)] = quotientSpread(tmpPrices, c, w, totDays, confLevel);
+        end;
         parfor_progress;
     
     end;
@@ -102,21 +87,6 @@ function results = pairsTrading(prices, varargin)
     parfor_progress(0);
     
     delete(POOL);
-    
-    %matlabpool open;
-
-%     switch p.Results.method
-%         case 'standard'
-%             [spreads, cointRel, cbA, ubA, lbA] = standardSpread(prices, couples, w, totDays, confLevel);
-%         case 'log'
-%             lPrices = log(prices);
-%             [spreads, cointRel, cbA, ubA, lbA] = standardSpread(lPrices, couples, n, w, totDays, confLevel);
-%         otherwise
-%             [spreads, cointRel, cbA, ubA, lbA] = quotientSpread(prices, couples, n, w, totDays, confLevel);
-%     end;
-   
-    %matlabpool close;
-
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % Now clean cointRel, spreads, prices and bands %
@@ -159,105 +129,77 @@ function results = pairsTrading(prices, varargin)
 end
 
 function [spreads, cointRel, cbA, ubA, lbA] = standardSpread(prices, couples, w, totDays, confLevel)
-    
-    n = size(couples, 1);
-    nDays = totDays - w;                        % number of days out of sample
-    spreads = zeros(nDays,n);                   % array for spreads
+
+    spreads = zeros(totDays,1);                 % array for spreads
     cbA = spreads;
     ubA = spreads;
     lbA = spreads;
-    cointRel = zeros(n,4);                      % table for cointegration
+    cointRel = zeros(1,4);                      % table for cointegration
     
-    POOL = parpool('local');
-
-    parfor_progress(n);
-
-    for i=1:n         
-                
-        for d=w+1:totDays
-            
-            tmpPrices = [prices(d-w:d, couples(i,1)) prices(d-w:d, couples(i,2))];
-            
-            c = cointParam([tmpPrices(:,1) tmpPrices(:,2)], couples(i,:), confLevel);
-            
-            if ~isempty(c)
-                
-                cointRel(i,:) = c;
-                c0 = c(3);
-                beta = [1; -c(4)];
-                s = zscore(tmpPrices*beta - c0);
-                
-                spreads(d,i) = s(end);
-                cbA(d,i) = mean(s);
-                ubA(d,i) = mean(s) + 2*std(s);
-                lbA(d,i) = mean(s) - 2*std(s);
-            
-            else
-                cbA(d,i) = 0;
-                ubA(d,i) = 2;
-                lbA(d,i) = -2;
-            end;
-            
-        end;
+    warning('off');
+    
+    for d=w+1:totDays
         
-        parfor_progress;
+        tmpPrices = prices(d-w:d,:);
+            
+        c = cointParam([tmpPrices(:,1) tmpPrices(:,2)], couples, confLevel);
+    
+        if ~isempty(c)
+        
+            cointRel(1,:) = c;
+            c0 = c(3);
+            beta = [1; -c(4)];
+            s = zscore(tmpPrices*beta - c0);
+        
+            spreads(d,1) = s(end);
+            cbA(d,1) = mean(s);
+            ubA(d,1) = mean(s) + 2*std(s);
+            lbA(d,1) = mean(s) - 2*std(s);
+        
+        else
+            cbA(d,1) = 0;
+            ubA(d,1) = 2;
+            lbA(d,1) = -2;
+        end;
     
     end;
-    
-    parfor_progress(0);
-    
-    delete(POOL);
 
 end
 
-function [spreads, cointRel, cbA, ubA, lbA] = quotientSpread(prices, couples, n, w, totDays, confLevel)
+function [spreads, cointRel, cbA, ubA, lbA] = quotientSpread(prices, couples, w, totDays, confLevel)
 
-    nDays = totDays - w;                        % number of days out of sample
-    spreads = zeros(nDays,n);                   % array for spreads
+    spreads = zeros(totDays,1);                 % array for spreads
     cbA = spreads;
     ubA = spreads;
     lbA = spreads;
-    cointRel = zeros(n,4);                      % table for cointegration
-
-    POOL = parpool('local');
-
-    parfor_progress(n);
-
-    parfor i=1:n         
+    cointRel = zeros(1,4);                      % table for cointegration
+    
+    warning('off');
+    
+    for d=w+1:totDays
         
-        coup = couples(i,:);
+        tmpPrices = prices(d-w:d,:);
+            
+        c = cointParam([tmpPrices(:,1) tmpPrices(:,2)], couples, confLevel);
+    
+        if ~isempty(c)
         
-        for d=w+1:totDays
-            
-            tmpPrices = [prices(d-w:d, coup(1)) prices(d-w:d, coup(2))];
-            
-            c = cointParam([tmpPrices(:,1) tmpPrices(:,2)], coup, confLevel);
-            
-            if ~isempty(c)
-                
-                cointRel(i,:) = c;
-                s = tmpPrices(:,1)./tmpPrices(:,2);
-                
-                spreads(d,i) = s(end);
-                cbA(d,i) = mean(s);
-                ubA(d,i) = mean(s) + 2*std(s);
-                lbA(d,i) = mean(s) - 2*std(s);
-            
-            else
-                cbA(d,i) = 0;
-                ubA(d,i) = 2;
-                lbA(d,i) = -2;
-            end;
-            
+            cointRel(1,:) = c;
+
+            s = tmpPrices(:,1)./tmpPrices(:,2);
+        
+            spreads(d,1) = s(end);
+            cbA(d,1) = mean(s);
+            ubA(d,1) = mean(s) + 2*std(s);
+            lbA(d,1) = mean(s) - 2*std(s);
+        
+        else
+            cbA(d,1) = 0;
+            ubA(d,1) = 2;
+            lbA(d,1) = -2;
         end;
-        
-        parfor_progress;
     
     end;
-    
-    parfor_progress(0);
-    
-    delete(POOL);
     
 end
 
