@@ -36,8 +36,6 @@ function results = pairsTrading(prices, varargin)
     numAssets = size(prices,2);                 % number of assets
     n = (numAssets*numAssets-numAssets)/2;      % max number of cointegration's relations
     totDays = size(prices,1);                   % number of days
-
-    warning('off');                             % STFU!
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % Generate all the couples. TODO: Is there a better way? %
@@ -111,6 +109,8 @@ function results = pairsTrading(prices, varargin)
     % Return results in struct %
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
+    results.bps = bps;
+    results.method = m;
     results.pl = pl;
     results.prices = prices;
     results.cointRel = cointRel;
@@ -136,7 +136,7 @@ function [spreads, cointRel, cbA, ubA, lbA] = standardSpread(prices, couples, w,
     lbA = spreads;
     cointRel = zeros(1,4);                      % table for cointegration
     
-    warning('off');
+    warning('off');                             % STFU!
     
     for d=w+1:totDays
         
@@ -174,7 +174,7 @@ function [spreads, cointRel, cbA, ubA, lbA] = quotientSpread(prices, couples, w,
     lbA = spreads;
     cointRel = zeros(1,4);                      % table for cointegration
     
-    warning('off');
+    warning('off');                             % STFU!
     
     for d=w+1:totDays
         
