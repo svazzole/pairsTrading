@@ -7,12 +7,14 @@ function results = pairsTrading(prices, varargin)
     defaultConf = 0.95;
     defaultWindowWidth = 252;
     defaultBps = 10;
+    defaultFdr = false;
     
     addRequired(p, 'prices', @isnumeric);
     addOptional(p, 'method', defaultMethod, @(x) any(validatestring(x, expectedMethods)));
     addOptional(p, 'confLev', defaultConf, @isnumeric)
     addOptional(p, 'window', defaultWindowWidth, @isnumeric);
     addOptional(p, 'bps', defaultBps, @isnumeric);
+    addOptional(p, 'fdr', defaultFdr, @islogical);
     
     parse(p, prices, varargin{:});
     
@@ -60,31 +62,37 @@ function results = pairsTrading(prices, varargin)
     ubA = spreads;
     lbA = spreads;
     cointRel = zeros(n,4);                      % table for cointegration
-    
-    POOL = parpool('local');
 
-    parfor_progress(n);
-
-    parfor i=1:n         
+    if p.Results.fdr == 0
         
-        c = couples(i,:);
-        tmpPrices = [prices(:,c(1)) prices(:,c(2))];
-        switch m
-            case 'standard'
-                [spreads(:,i), cointRel(i,:), cbA(:,i), ubA(:,i), lbA(:,i)] = standardSpread(tmpPrices, c, w, totDays, confLevel);
-            case 'log'
-                tmpPrices = log(tmpPrices);
-                [spreads(:,i), cointRel(i,:), cbA(:,i), ubA(:,i), lbA(:,i)] = standardSpread(tmpPrices, c, w, totDays, confLevel);
-            otherwise
-                [spreads(:,i), cointRel(i,:), cbA(:,i), ubA(:,i), lbA(:,i)] = quotientSpread(tmpPrices, c, w, totDays, confLevel);
+        POOL = parpool('local');
+        
+        parfor_progress(n);
+        
+        parfor i=1:n
+            
+            c = couples(i,:);
+            tmpPrices = [prices(:,c(1)) prices(:,c(2))];
+            switch m
+                case 'standard'
+                    [spreads(:,i), cointRel(i,:), cbA(:,i), ubA(:,i), lbA(:,i)] = standardSpread(tmpPrices, c, w, totDays, confLevel);
+                case 'log'
+                    tmpPrices = log(tmpPrices);
+                    [spreads(:,i), cointRel(i,:), cbA(:,i), ubA(:,i), lbA(:,i)] = standardSpread(tmpPrices, c, w, totDays, confLevel);
+                otherwise
+                    [spreads(:,i), cointRel(i,:), cbA(:,i), ubA(:,i), lbA(:,i)] = quotientSpread(tmpPrices, c, w, totDays, confLevel);
+            end;
+            parfor_progress;
+            
         end;
-        parfor_progress;
-    
+        
+        parfor_progress(0);
+        
+        delete(POOL);
+        
+    else
+        error('Non ancora implementato');
     end;
-    
-    parfor_progress(0);
-    
-    delete(POOL);
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % Now clean cointRel, spreads, prices and bands %
