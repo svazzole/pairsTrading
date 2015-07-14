@@ -91,7 +91,7 @@ function results = pairsTrading(prices, varargin)
         delete(POOL);
         
     else
-        error('Non ancora implementato');
+        [spreads, cointRel, cbA, ubA, lbA] = fdrPairsTrading(prices, w, confLevel, couples);
     end;
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -323,4 +323,88 @@ function b = commissions(pos)
 
 end
 
+function [spreads, cointRel, cbA, ubA, lbA] = fdrPairsTrading(prices, w, confLevel, couples)
+    
+    n = size(prices,2);
+    totDays = size(prices,1);
+    m = (n^2-n)/2;
+    spreads = zeros(totDays,m);                 % array for spreads
+    cbA = spreads;
+    ubA = spreads;
+    lbA = spreads;
+    cointRel = zeros(m,4);                      % table for cointegration
+    
+    for d=w+1:totDays
+        
+        for i=1:n
+        
+            tmpCouples = couples(couples(:,1)==i,:);
+            l = size(tmpCouples,1);
+            pvalues = zeros(l,1);
+            tmpCointRel = zeros(l,4);
 
+            for j=1:l
+                
+                tmpPrices = [prices(d-w:d, tmpCouples(j,1)) prices(d-w:d, tmpCouples(j,2))];
+                [c, pval] = cointParamFDR([tmpPrices(:,1) tmpPrices(:,2)], tmpCouples(j,:), confLevel);
+                pvalues(j) = pval;
+                if ~isempty(c)
+                    tmpCointRel(j,:) = c;
+                end;
+                
+            end;
+            
+            [~, t, ~] = falseDiscoveryRate(pvalues, confLevel);
+            
+            numZeros = l - sum(t); 
+            
+            tmpCointRel(~t, :) = zeros(numZeros,4);
+            
+            fi = find(couples(:,1)==i, 1, 'first');
+            la = find(couples(:,1)==i, 1, 'last');
+            cointRel(fi:la,:) = tmpCointRel;
+            
+        end;
+    
+        for i=1:m
+            
+            coup = couples(i,:);
+            
+            tmpPrices = [prices(d-w:d,coup(:,1)) prices(d-w:d,coup(:,2))];
+            
+            c = cointRel(i,:);
+    
+            if ~isequal(c,[0 0 0 0])
+        
+                c0 = c(3);
+                beta = [1; -c(4)];
+                s = zscore(tmpPrices*beta - c0);
+        
+                spreads(d,i) = s(end);
+                cbA(d,i) = mean(s);
+                ubA(d,i) = mean(s) + 2*std(s);
+                lbA(d,i) = mean(s) - 2*std(s);
+        
+            else
+                cbA(d,i) = 0;
+                ubA(d,i) = 2;
+                lbA(d,i) = -2;
+            end;
+    
+        end;
+        
+        perc = (d-w)/(totDays - w);
+        disp(perc);
+        
+    end;
+   
+end
+
+function [c, pval] = cointParamFDR(p, couple, level)
+
+    [h,pval,~,~,reg] = egcitest(p, 'alpha', level);
+    
+    c = [couple reg.coeff(1) reg.coeff(2)];
+
+    
+end

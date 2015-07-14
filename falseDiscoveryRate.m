@@ -4,9 +4,11 @@ function [fdr, logic, ix] = falseDiscoveryRate(pvalues, confidence)
     l = size(pOrd,1);
     b = zeros(l,1);
     
+    confidence = 1 - confidence;
+    
     for i=1:l
         
-        b(i) = (i/l)*confidence;
+        b(i) = (i/(l*sum(1./(1:l))))*confidence;
         
     end;
     
