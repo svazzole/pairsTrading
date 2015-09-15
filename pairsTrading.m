@@ -213,7 +213,7 @@ end
 
 function c = cointParam(p, couple, level)
 
-    [h,~,~,~,reg] = egcitest(p, 'alpha', level);
+    [h,~,~,~,reg] = egcitest(p, 'alpha', 1-level);
     
     if (h==1)
         c = [couple reg.coeff(1) reg.coeff(2)];
