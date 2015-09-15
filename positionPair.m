@@ -1,5 +1,6 @@
 function p = positionPair(spreads)
 
+    
     ncol = size(spreads,2);
     nDays = size(spreads,1);
     
