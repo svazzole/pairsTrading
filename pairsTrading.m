@@ -119,6 +119,8 @@ function results = pairsTrading(prices, varargin)
     
     results.bps = bps;
     results.method = m;
+    results.confLevel = confLevel;
+    
     results.pl = pl;
     results.prices = prices;
     results.cointRel = cointRel;
